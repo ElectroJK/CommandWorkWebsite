@@ -3,7 +3,7 @@
 <head>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<title>Совместная работа над проектами</title>
+	<title>ProjectHub</title>
 	<link rel="stylesheet" href="/styles.css" />
 	<script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
 	<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -11,13 +11,7 @@
 </head>
 <body>
 	<div id="root"></div>
-
-	<footer class="site-footer">
-		<span>Tanatkanov Kadyrulan, Daulet Ermek, Miras Serikzhanuly</span>
-	</footer>
-
-	<script type="text/babel" src="/app.jsx"></script>
+	<script src="/socket.io/socket.io.js"></script>
+	<script type="text/babel" data-presets="env,react" src="/app.jsx"></script>
 </body>
 </html>
-
-
