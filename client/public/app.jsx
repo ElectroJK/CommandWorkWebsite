@@ -93,7 +93,7 @@ function Placeholder({ title, note }){
 function Topbar({ navigate }) {
     return (
         <header className="topbar">
-            <div className="title">
+            <div className="title" onClick={()=>navigate('/')} style={{cursor:'pointer'}}>
                 <div className="logo">PH</div>
                 <div>
                     <div className="app-name">ProjectHub</div>
@@ -107,6 +107,15 @@ function Topbar({ navigate }) {
                 <button className="icon-btn" onClick={() => navigate('/notifications')}><Icon name="bell"/></button>
             </div>
         </header>
+    );
+}
+
+function Subnav({ title, right }){
+    return (
+        <div className="subnav panel">
+            <div className="subnav-title">{title}</div>
+            {right}
+        </div>
     );
 }
 
@@ -165,13 +174,13 @@ function Stat({ label, value, delta, icon, color }) {
     );
 }
 
-function HomePage({ projects, activities }) {
+function HomePage({ projects, activities, path, navigate }) {
     return (
         <div className="content">
             <div className="tabs">
-                <button className="tab active">Обзор</button>
-                <button className="tab">Канбан</button>
-                <button className="tab">Календарь</button>
+                <button className={`tab${path==='/'?' active':''}`} onClick={()=>navigate('/')}>Обзор</button>
+                <button className={`tab${path==='/kanban'?' active':''}`} onClick={()=>navigate('/kanban')}>Канбан</button>
+                <button className={`tab${path==='/calendar'?' active':''}`} onClick={()=>navigate('/calendar')}>Календарь</button>
             </div>
             <div className="cards">
                 <div className="panel"><Stat label="Активные проекты" value={projects.length} delta="+1" icon={<span>🗂️</span>} color="#60a5fa"/></div>
@@ -324,6 +333,71 @@ function TeamPage({ presence }){
     );
 }
 
+function SearchPage(){
+    const [q,setQ]=useState("");
+    const [res,setRes]=useState({ projects:[], messages:[], events:[] });
+    const [loading,setLoading]=useState(false);
+    function run(e){
+        if(e) e.preventDefault();
+        const s=q.trim();
+        if(!s){ setRes({ projects:[], messages:[], events:[] }); return; }
+        setLoading(true);
+        fetch(`/api/search?q=${encodeURIComponent(s)}`).then(r=>r.json()).then(setRes).finally(()=>setLoading(false));
+    }
+    return (
+        <div className="content">
+            <form className="panel toolbar" onSubmit={run}>
+                <input className="input" placeholder="Поиск по проектам, событиям и сообщениям" value={q} onChange={e=>setQ(e.target.value)} />
+                <button className="button" type="submit">Найти</button>
+            </form>
+            <div className="grid" style={{marginTop:16}}>
+                <div className="panel">
+                    <div className="panel-title">Проекты {loading? '…' : ''}</div>
+                    <div className="stack" style={{marginTop:8}}>
+                        {res.projects.length===0 && <div className="muted">Ничего не найдено</div>}
+                        {res.projects.map(p=> (
+                            <a key={p.id} href={`#/projects/${p.id}`} className="activity">
+                                <div className="dot" style={{ background: p.color, width:10, height:10, borderRadius:9999, marginRight:10 }} />
+                                <div>
+                                    <div className="activity-text">{p.name}</div>
+                                    <div className="muted small">{p.description}</div>
+                                </div>
+                            </a>
+                        ))}
+                    </div>
+                </div>
+                <div className="panel">
+                    <div className="panel-title">События</div>
+                    <div className="stack" style={{marginTop:8}}>
+                        {res.events.length===0 && <div className="muted">Ничего не найдено</div>}
+                        {res.events.map(e=> (
+                            <div key={e.id} className="activity">
+                                <div className="activity-text">{e.title}</div>
+                                <div className="muted small">{e.date}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+                <div className="panel">
+                    <div className="panel-title">Сообщения</div>
+                    <div className="stack" style={{marginTop:8}}>
+                        {res.messages.length===0 && <div className="muted">Ничего не найдено</div>}
+                        {res.messages.map(m=> (
+                            <div key={m.id} className="activity">
+                                <div className="avatar">{(m.author||'?').slice(0,1).toUpperCase()}</div>
+                                <div>
+                                    <div className="activity-text">{m.text}</div>
+                                    <div className="muted small">{m.author} • {m.time}</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function MessagesPage({ meId, meName, messages, onSend, onDelete }){
     const [text,setText]=useState("");
     function send(e){
@@ -445,6 +519,7 @@ function AppShell(){
         s.on('projects:created', (p)=>setProjects(prev=> prev.some(x=>x.id===p.id) ? prev : [p, ...prev]));
         s.on('projects:updated', (p)=>setProjects(prev=>prev.map(x=>x.id===p.id? p:x)));
         s.on('projects:deleted', (id)=>setProjects(prev=>prev.filter(x=>x.id!==id)));
+        s.on('activity:new', (a)=>setActivities(prev=>[a, ...prev]));
         s.on('admin:cleared', ()=>{ refreshAll(); });
         window.__socket__ = s;
         return ()=>{ s.disconnect(); };
@@ -474,8 +549,7 @@ function AppShell(){
 
     function addProject({ name, description }){
         fetch('/api/projects',{ method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ name, description }) })
-            .then(r=>r.json()).then(p=>{
-                setActivities(prev=>[{ author:'Вы', text:`Создан проект ${p.name}`, time:'сейчас' }, ...prev]);
+            .then(r=>r.json()).then(()=>{
                 navigate('/projects');
             });
     }
@@ -483,7 +557,6 @@ function AppShell(){
         fetch(`/api/projects/${id}`,{ method:'PUT', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(data) })
             .then(r=>r.json()).then(p=>{
                 setProjects(prev=>prev.map(x=>x.id===p.id? p : x));
-                setActivities(prev=>[{ author:'Вы', text:`Изменён проект ${p.name}`, time:'сейчас' }, ...prev]);
                 showToast(p.progress===100 ? 'команда мечты!' : 'Успешно сохранено');
                 navigate('/projects');
             });
@@ -492,7 +565,6 @@ function AppShell(){
         fetch(`/api/projects/${id}`,{ method:'DELETE' })
             .then(r=>r.json()).then(p=>{
                 setProjects(prev=>prev.filter(x=>x.id!==id));
-                setActivities(prev=>[{ author:'Вы', text:`Удалён проект ${p.name}`, time:'сейчас' }, ...prev]);
                 navigate('/projects');
             });
     }
@@ -537,12 +609,29 @@ function AppShell(){
             .catch(()=> alert('Неверный пароль или ошибка запроса'));
     }
 
+    const headerTitle = useMemo(()=>{
+        if(path.startsWith('/projects/')){
+            const p = projects.find(p=>p.id===path.split('/')[2]);
+            return p?.name || 'Проект';
+        }
+        if(path==='/projects') return 'Проекты';
+        if(path==='/calendar') return 'Календарь';
+        if(path==='/team') return 'Команда';
+        if(path==='/messages') return 'Сообщения';
+        if(path==='/settings') return 'Настройки';
+        if(path==='/search') return 'Поиск';
+        if(path==='/kanban') return 'Канбан';
+        if(path==='/notifications') return 'Уведомления';
+        return 'Главная';
+    },[path, projects]);
+
     return (
         <div className="layout">
             <Sidebar projects={projects} team={team} path={path} />
             <main className="main">
                 <Topbar navigate={navigate} />
-                {path==='/' && <HomePage projects={projects} activities={activities} />}
+                <Subnav title={headerTitle} />
+                {path==='/' && <HomePage projects={projects} activities={activities} path={path} navigate={navigate} />}
                 {path==='/projects' && <ProjectsPage projects={projects} onAdd={addProject} />}
                 {path.startsWith('/projects/') && (
                     <ProjectDetail
@@ -553,6 +642,7 @@ function AppShell(){
                 )}
                 {path==='/calendar' && <CalendarPage events={events} onAddEvent={addEvent} />}
                 {path==='/team' && <TeamPage presence={presence} />}
+                {path==='/search' && <SearchPage />}
                 {path==='/messages' && <MessagesPage meId={meId} meName={meName} messages={messages} onSend={sendMessage} onDelete={deleteMessage} />}
                 {path==='/settings' && <SettingsPage theme={theme} setTheme={setTheme} meName={meName} setMeName={setMeName} onBroadcastName={broadcastName} onOpenAdmin={openAdmin} onQuickClear={quickClearMessages} />}
                 {path==='/settings' && adminOpen && (
@@ -567,7 +657,7 @@ function AppShell(){
                         </div>
                     </div>
                 )}
-                {['/search','/kanban','/notifications'].includes(path) && <Placeholder title="Скоро здесь будет страница" note={path.replace('/','')} />}
+                {['/kanban','/notifications'].includes(path) && <Placeholder title="Скоро здесь будет страница" note={path.replace('/','')} />}
                 {toast && (
                     <div style={{position:'fixed', right:16, bottom:16, background:'rgba(0,0,0,0.7)', color:'#fff', padding:'10px 12px', borderRadius:10}}>{toast}</div>
                 )}

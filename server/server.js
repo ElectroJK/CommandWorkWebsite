@@ -61,6 +61,7 @@ app.post('/api/projects', (req, res) => {
   writeProjects(list);
   res.status(201).json(p);
   io.emit('projects:created', p);
+  io.emit('activity:new', { author: 'Система', text: `Создан проект ${p.name}`, time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) });
 });
 
 app.put('/api/projects/:id', (req, res) => {
@@ -80,6 +81,8 @@ app.put('/api/projects/:id', (req, res) => {
   }
   res.json(next);
   io.emit('projects:updated', next);
+  const doneNow = Number(next.progress) === 100 && Number(prev.progress) !== 100;
+  io.emit('activity:new', { author: 'Система', text: doneNow ? `Завершил задачу ${next.name}` : `Изменён проект ${next.name}`, time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) });
 });
 
 app.delete('/api/projects/:id', (req, res) => {
@@ -89,8 +92,14 @@ app.delete('/api/projects/:id', (req, res) => {
   if (idx === -1) return res.status(404).end();
   const [removed] = list.splice(idx, 1);
   writeProjects(list);
+  const evs = readJson(eventsFile);
+  const filtered = evs.filter(e => e.id !== `e_${id}`);
+  if (filtered.length !== evs.length) writeJson(eventsFile, filtered);
   res.json(removed);
   io.emit('projects:deleted', id);
+  if (removed && removed.name) {
+    io.emit('activity:new', { author: 'Система', text: `Удалён проект ${removed.name}`, time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) });
+  }
 });
 
 app.get('/api/messages', (_req, res) => {
@@ -121,6 +130,25 @@ app.delete('/api/messages/:id', (req, res) => {
 
 app.get('/api/events', (_req, res) => {
   res.json(readJson(eventsFile));
+});
+
+app.get('/api/search', (req, res) => {
+  const q = String((req.query.q || '').toString()).toLowerCase().trim();
+  if (!q) return res.json({ projects: [], messages: [], events: [] });
+  const projects = readProjects().filter(p =>
+    (p.name || '').toLowerCase().includes(q) ||
+    (p.description || '').toLowerCase().includes(q) ||
+    (p.status || '').toLowerCase().includes(q)
+  );
+  const messages = readJson(messagesFile).filter(m =>
+    (m.text || '').toLowerCase().includes(q) ||
+    (m.author || '').toLowerCase().includes(q)
+  );
+  const events = readJson(eventsFile).filter(e =>
+    (e.title || '').toLowerCase().includes(q) ||
+    (e.date || '').toLowerCase().includes(q)
+  );
+  res.json({ projects, messages, events });
 });
 
 function hash(pw){ return crypto.createHash('sha256').update(String(pw || '')).digest('hex'); }
