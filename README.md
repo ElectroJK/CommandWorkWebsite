@@ -22,7 +22,7 @@ A modern **React.js web application** featuring theme switching, responsive UI, 
 
 ---
 
-## 📦 Installation
+##Installation
 
 Clone the repository:
 ```bash
